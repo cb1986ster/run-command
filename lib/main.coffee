@@ -8,6 +8,9 @@ module.exports =
     shellCommand:
       type: 'string'
       default: '/bin/bash'
+    useLoginShell:
+      type: 'boolean'
+      default: true
 
   activate: (state) ->
     @runner = new CommandRunner()

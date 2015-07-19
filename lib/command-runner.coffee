@@ -10,6 +10,13 @@ class CommandRunner
 
   spawnProcess: (command) ->
     shell = atom.config.get('run-command.shellCommand') || '/bin/bash'
+    useLogin = atom.config.get('run-command.useLoginShell')
+
+    args = ['-c', command]
+    if useLogin
+      args = ['-l'].concat(args)
+
+    console.log('args:', args)
     @term = pty.spawn shell, ['-c', command],
       name: 'xterm-color'
       cwd: @constructor.workingDirectory()
