@@ -5,17 +5,20 @@ pty = require 'pty.js'
 module.exports =
 class CommandRunner
   constructor: ->
+    @running = false
     @subscriptions = new CompositeDisposable()
     @emitter = new Emitter()
 
   spawnProcess: (command) ->
+    @running = true
+
     shell = atom.config.get('run-command.shellCommand') || '/bin/bash'
     useLogin = atom.config.get('run-command.useLoginShell')
 
     args = ['-c', command]
     if useLogin
       args = ['-l'].concat(args)
-      
+
     @term = pty.spawn shell, ['-c', command],
       name: 'xterm-color'
       cwd: @constructor.workingDirectory()
@@ -24,7 +27,11 @@ class CommandRunner
     @term.on 'data', (data) =>
       @emitter.emit('data', data)
     @term.on 'exit', =>
+      @running = false
       @emitter.emit('exit')
+    @term.on 'close', =>
+      @running = false
+      @emitter.emit('close')
 
   @homeDirectory: ->
     process.env['HOME'] || process.env['USERPROFILE'] || '/'
@@ -46,6 +53,8 @@ class CommandRunner
     @emitter.on 'exit', handler
   onKill: (handler) ->
     @emitter.on 'kill', handler
+  onClose: (handler) ->
+    @emitter.on 'close', handler
 
   run: (command) ->
     new Promise (resolve, reject) =>
@@ -61,7 +70,7 @@ class CommandRunner
 
       @subscriptions.add @onData (data) =>
         result.output += data
-      @subscriptions.add @onExit =>
+      @subscriptions.add @onClose =>
         result.exited = true
         resolve(result)
       @subscriptions.add @onKill (signal) =>
@@ -71,7 +80,7 @@ class CommandRunner
   kill: (signal) ->
     signal ||= 'SIGTERM'
 
-    if @term?
+    if @term? && @running
       @emitter.emit('kill', signal)
       process.kill(@term.pid, signal)
       @term.destroy()
