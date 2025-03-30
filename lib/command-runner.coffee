@@ -1,6 +1,6 @@
 {BufferedProcess, Emitter, CompositeDisposable} = require 'atom'
+{spawn} = require 'child_process'
 path = require 'path'
-pty = require 'pty.js'
 
 module.exports =
 class CommandRunner
@@ -19,19 +19,22 @@ class CommandRunner
     if useLogin
       args = ['-l'].concat(args)
 
-    @term = pty.spawn shell, ['-c', command],
-      name: 'xterm-color'
+    @process = spawn shell, args, {
       cwd: @constructor.workingDirectory()
       env: process.env
+      shell: true
+    }
 
-    @term.on 'data', (data) =>
-      @emitter.emit('data', data)
-    @term.on 'exit', =>
+    @process.stdout.on 'data', (data) =>
+      @emitter.emit('data', data.toString())
+    @process.stderr.on 'data', (data) =>
+      @emitter.emit('data', data.toString())
+    @process.on 'exit', (code) =>
       @running = false
-      @emitter.emit('exit')
-    @term.on 'close', =>
+      @emitter.emit('exit', code)
+    @process.on 'close', (code) =>
       @running = false
-      @emitter.emit('close')
+      @emitter.emit('close', code)
 
   @homeDirectory: ->
     process.env['HOME'] || process.env['USERPROFILE'] || '/'
@@ -70,8 +73,9 @@ class CommandRunner
 
       @subscriptions.add @onData (data) =>
         result.output += data
-      @subscriptions.add @onClose =>
+      @subscriptions.add @onClose (code) =>
         result.exited = true
+        result.exitCode = code
         resolve(result)
       @subscriptions.add @onKill (signal) =>
         result.signal = signal
@@ -80,11 +84,10 @@ class CommandRunner
   kill: (signal) ->
     signal ||= 'SIGTERM'
 
-    if @term? && @running
+    if @process? && @running
       @emitter.emit('kill', signal)
-      process.kill(@term.pid, signal)
-      @term.destroy()
-      @term = null
+      @process.kill(signal)
+      @process = null
 
       @subscriptions.dispose()
       @subscriptions.clear()
